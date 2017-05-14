@@ -1,0 +1,426 @@
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css">
+  <script src="https://unpkg.com/vue@2.3.2"></script>
+  <style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Yu Gothic", YuGothic, "ヒラギノ角ゴ ProN W3", Hiragino Kaku Gothic ProN, Arial, "メイリオ", Meiryo, sans-serif;
+}
+.container {
+  width: 450px;
+  height: 700px;
+  background-color: gray;
+  margin: 0 auto;
+  position: relative;
+}
+.main {
+  position: relative;
+  width: 300px;
+  height: 600px;
+  background-color: black;
+  float:left;
+}
+.next {
+  float:left;
+  width :150px;
+  height: 150px;
+  background-color: blue;
+}
+.score {
+  float:left;
+  width: 150px;
+  height: 450px;
+  background-color: red;
+}
+.control {
+  float:left;
+  width: 100%;
+  height: 100px;
+  background-color: green;
+}
+.gameover {
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  right: 0px;
+  bottom: 0px;
+  margin: auto;
+  width: 200px;
+  height: 50px;
+  border-radius: 15px;
+  background-color: white;
+  text-align: center;
+  line-height: 50px;
+  font-size: 24px;
+  font-weight: bold;
+}
+.row {
+  width: 300px;
+  height: 30px;
+}
+.nextBlockRow {
+  width: 120px;
+  height: 30px;
+}
+.cell {
+  display: inline-block;
+  width: 29px;
+  height: 29px;
+  border-left: 1px solid #DDDDDD;
+  border-top: 1px solid #DDDDDD;
+}
+.btn {
+  display: block;
+  width: 80%;
+  height: 80px;
+  margin: 10px auto;
+}
+  </style>
+</head>
+<body >
+  <div id="app">
+    <div class="container" >
+      <div class="main">
+        <div v-for="row in rows" class="row">
+          <div v-for="cell in row" class="cell" :style="{'background-color': color(cell)}"></div>
+        </div>
+        <div style="width: 100%; height: 100%; opacity: 0.6; position: absolute; top: 0px; left: 0px; background-color: white;" v-if="gameover"></div>
+      </div>
+      <div class="next">
+        <div style="width: 120px; height: 120px; margin: 15px auto;">
+          <div v-for="row in nextBlockRows" class="nextBlockRow">
+            <div v-for="cell in row" class="cell" :style="{'background-color': color(cell)}"></div>
+          </div>
+        </div>_
+      </div>
+      <div class="score">
+        <div>
+          DELETED: {{current.totalNumRowsDeleted}}
+        </div>
+      </div>
+      <div class="control">
+        <button class="btn" @click="start" v-if="!started">START</button>
+        <button class="btn" @click="stop" v-if="started">STOP</button>
+      </div>
+      <div class="gameover" v-if="gameover">
+        GAMEOVER
+      </div>
+    </div>
+  </div>
+
+<script>
+const blocks = [
+  /*l:*/{cellPatterns: [
+        [{x: -1, y: 0}, {x: 0, y: 0}, {x: 1, y: 0}, {x: -1, y: 1}, ],
+        [{x: -1, y: -1}, {x: 0, y: -1}, {x: 0, y: 0}, {x: 0, y: 1}, ],
+        [{x: -1, y: 0}, {x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: -1}, ],
+        [{x: 0, y: -1}, {x: 0, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}, ],
+      ],
+      initialPos: {x: 5, y: 0}},
+  /*reverse_l:*/ {cellPatterns: [
+        [{x: -1, y: 0}, {x: 0, y: 0}, {x: 1, y: 0}, {x: -1, y: -1}, ],
+        [{x: 0, y: -1}, {x: 0, y: 0}, {x: 0, y: 1}, {x: 1, y: -1}, ],
+        [{x: -1, y: 0}, {x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: 1}, ],
+        [{x: -1, y: 1}, {x: 0, y: 1}, {x: 0, y: 0}, {x: 0, y: -1}, ],
+      ],
+      initialPos: {x: 5, y: 1}},
+  /*box:*/ {cellPatterns: [
+        [{x: 0, y: 0}, {x: 1, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}, ],
+      ],
+      initialPos: {x: 5, y: 0}},
+  /*stick:*/ {cellPatterns: [
+        [{x: 0, y: -2}, {x: 0, y: -1}, {x: 0, y: 0}, {x: 0, y: 1}, ],
+        [{x: -2, y: 0}, {x: -1, y: 0}, {x: 0, y: 0}, {x: 1, y: 0}, ],
+      ],
+      initialPos: {x: 5, y: 2}},
+  /*z:*/ {cellPatterns: [
+        [{x: -1, y: -1}, {x: 0, y: -1}, {x: 0, y: 0}, {x: 1, y: 0}, ],
+        [{x: 0, y: -1}, {x: 0, y: 0}, {x: -1, y: 0}, {x: -1, y: 1}, ],
+      ],
+      initialPos: {x: 5, y: 1}},
+  /*s:*/ {cellPatterns: [
+        [{x: -1, y: 0}, {x: 0, y: 0}, {x: 0, y: -1}, {x: 1, y: -1}, ],
+        [{x: -1, y: -1}, {x: -1, y: 0}, {x: 0, y: 0}, {x: 0, y: 1}, ],
+      ],
+      initialPos: {x: 5, y: 1}},
+  /*t:*/ {cellPatterns: [
+        [{x: -1, y: 0}, {x: 0, y: 0}, {x: 1, y: 0}, {x: 0, y: -1}, ],
+        [{x: 0, y: -1}, {x: 0, y: 0}, {x: 0, y: 1}, {x: 1, y: 0}, ],
+        [{x: -1, y: 0}, {x: 0, y: 0}, {x: 1, y: 0}, {x: 0, y: 1}, ],
+        [{x: 0, y: -1}, {x: 0, y: 0}, {x: 0, y: 1}, {x: -1, y: 0}, ],
+      ],
+      initialPos: {x: 5, y: 1}},
+
+]
+var app = new Vue({
+  el: '#app',
+  data: {
+    rules: {
+      blocks,
+      speeds: [
+        0.0333, 0.0367, 0.0403, 1,
+      ],
+      landedCountMax: 5,
+      futureBlockNum: 3,
+      numBlocksLandedAtInitialPosMax: 2,
+    },
+    main: {
+      cells: {},
+    },
+    current: {
+      block: null,
+      rotateId: 0,
+      pos: {x: 0, y: 0},
+      yDistance: 0,
+      landed: false,
+      landedCount: 0,
+      level: 0,
+      totalNumRowsDeleted: 0,
+      futureBlocks: [],
+      numBlocksLandedAtInitialPos: 0,
+    },
+    started: false,
+    gameover: false,
+    timer: null,
+  },
+  computed: {
+    rows: function() {
+      const rows = [];
+      for (var y = 0; y < 20; y++) {
+        const row = [];
+        for (var x = 0; x < 10; x++) {
+          const exists = this.main.cells[`${x}-${y}`].exists || this.currentBlockCells[`${x}-${y}`]
+          row.push({exists});
+        }
+        rows.push(row);
+      }
+      return rows;
+    },
+    currentBlockCells: function() {
+      if (!this.current.block) {
+        return {};
+      }
+      return this.getBlockCells(this.current.block, this.current.rotateId, this.current.pos);
+    },
+    nextBlockRows: function() {
+      const rows = [];
+      const blockCells = this.getBlockCells(this.current.futureBlocks[0], 0, {x: 1, y: 2});
+      for (var y = 0; y < 4; y++) {
+        const row = [];
+        for (var x = 0; x < 4; x++) {
+          const key = `${x}-${y}`;
+          if (blockCells[key]) {
+            row.push({exists: true});
+          } else {
+            row.push({exists: false});
+          }
+        }
+        rows.push(row);
+      }
+      return rows;
+    }
+  },
+  methods: {
+    moveIfMovable: function(move) {
+      const nextCurrent = JSON.parse(JSON.stringify(this.current));
+      move(nextCurrent);
+      if (!this.checkMovable(nextCurrent, this.main.cells)) {
+        return false;
+      }
+      move(this.current);
+      return true;
+    },
+    getBlockCells: function(block, rotateId, pos) {
+      const ret = {};
+      block.cellPatterns[rotateId].forEach(cell => {
+        const x = pos.x + cell.x;
+        const y = pos.y + cell.y;
+        if (y < 0) return;
+        ret[`${x}-${y}`] = true;
+      });
+      return ret;
+    },
+    checkMovable: function(current, cells) {
+      const blockCells = this.getBlockCells(current.block, current.rotateId, current.pos);
+      for (var key in blockCells) {
+        if (!cells[key] || cells[key].exists) {
+          return false;
+        }
+      }
+      return true;
+    },
+    generateFutureBlocks: function() {
+      while (this.current.futureBlocks.length < this.rules.futureBlockNum) {
+        this.current.futureBlocks.push(this.rules.blocks[Math.floor(Math.random() * this.rules.blocks.length)]);
+      }
+    },
+    nextBlock: function() {
+      this.generateFutureBlocks();
+      this.current.block = this.current.futureBlocks.shift();
+      this.current.rotateId = 0;
+      this.current.pos.x = this.current.block.initialPos.x;
+      this.current.pos.y = this.current.block.initialPos.y;
+      this.current.yDistance = 0;
+      this.current.landed = false;
+      this.current.landedCount = 0;
+    },
+    checkGameover: function(current) {
+      if (current.pos.x == current.block.initialPos.x && current.pos.y == current.block.initialPos.y) {
+        current.numBlocksLandedAtInitialPos++;
+      } else {
+        current.numBlocksLandedAtInitialPos = 0;
+      }
+      if (current.numBlocksLandedAtInitialPos > this.rules.numBlocksLandedAtInitialPosMax) {
+        this.stop();
+        this.gameover = true;
+      }
+    },
+    nextFrame: function() {
+      if (!this.current.block) {
+        this.nextBlock();
+      }
+      if (!this.current.landed) {
+        this.current.yDistance += this.rules.speeds[this.current.level > 3 ? 3 : this.current.level];
+      }
+      if (this.current.yDistance > 1) {
+        var dropped = this.dropOne();
+        if (dropped) {
+          this.current.yDistance--;
+          this.current.landed = false;
+          this.current.landedCount = 0;
+        } else {
+          this.current.landed = true;
+          this.current.landedCount++;
+        }
+      }
+      if (this.current.landedCount > this.rules.landedCountMax) {
+        this.checkGameover(this.current);
+        this.fixBlock();
+        this.deleteRow();
+        this.nextBlock();
+      }
+    },
+    fixBlock: function() {
+      const blockCells = this.getBlockCells(this.current.block, this.current.rotateId, this.current.pos);
+      for (var key in blockCells) {
+        this.main.cells[key].exists = true;
+      }
+    },
+    deleteRow: function() {
+      const deleteRows = [];
+      for (var y = 0; y < 20; y++) {
+        var isDelete = true;
+        for (var x = 0; x < 10; x++) {
+          if (!this.main.cells[`${x}-${y}`].exists) {
+            isDelete = false;
+            break;
+          }
+        }
+        if (isDelete) {
+          deleteRows.push(y);
+        }
+      }
+      if (deleteRows.length == 0) {
+        return;
+      }
+      var numRowsDeleted = 0;
+      for (var y = 19; y > 0; y--) {
+        while (deleteRows.indexOf(y - numRowsDeleted) >= 0) {
+          numRowsDeleted++;
+        }
+        if (numRowsDeleted > 0) {
+          for (var x = 0; x < 10; x++) {
+            var fromCell = this.main.cells[`${x}-${y - numRowsDeleted}`];
+            if (fromCell) {
+              this.main.cells[`${x}-${y}`].exists = fromCell.exists;
+            } else {
+              this.main.cells[`${x}-${y}`].exists = false;
+            }
+          }
+        }
+      }
+      this.current.totalNumRowsDeleted += numRowsDeleted;
+      this.current.level = Math.floor(this.current.totalNumRowsDeleted / 10);
+    },
+    dropOne: function() {
+      return this.moveIfMovable(function(current){current.pos.y++});
+    },
+    color: function(cell) {
+      if (cell.exists) {
+        return 'blue';
+      } else {
+        return '#F9F9F9';
+      }
+    },
+    turnLeft: function() {
+      this.moveIfMovable(function(current){
+        current.rotateId = current.rotateId == 0 ? current.block.cellPatterns.length - 1 : current.rotateId - 1;
+      });
+    },
+    turnRight: function() {
+      this.moveIfMovable(function(current){
+        current.rotateId = current.rotateId == current.block.cellPatterns.length - 1 ? 0 : current.rotateId + 1;
+      });
+    },
+    moveLeft: function() {
+      this.moveIfMovable(function(current){current.pos.x--});
+    },
+    moveRight: function() {
+      this.moveIfMovable(function(current){current.pos.x++});
+    },
+    moveDown: function() {
+      if (this.moveIfMovable(function(current){current.pos.y++})) {
+        this.current.yDistance = 0;
+      }
+    },
+    start: function() {
+      this.timer = setInterval(this.nextFrame, 33);
+      this.started = true;
+      this.gameover = false;
+      this.initialize();
+    },
+    stop: function() {
+      clearInterval(this.timer);
+      this.started = false;
+    },
+    initialize: function() {
+      for (var x = 0; x < 10; x++) {
+        for (var y = 0; y < 20; y++) {
+          const cell = {x, y};
+          Vue.set(cell, 'exists', false);
+          Vue.set(this.main.cells, `${x}-${y}`, cell);
+        }
+      }
+      this.generateFutureBlocks();
+    },
+  },
+  created: function() {
+    this.initialize();
+    const self = this;
+    document.addEventListener('keydown', function(event){
+      switch(event.keyCode) {
+        case 37:
+          self.moveLeft();
+          break;
+        case 39:
+          self.moveRight();
+          break;
+        case 40:
+          self.moveDown();
+          break;
+        case 88:
+          self.turnRight();
+          break;
+        case 90:
+          self.turnLeft();
+          break;
+        default:
+          break;
+      }
+    });
+  }
+});
+</script>
+</body>
+</html>
